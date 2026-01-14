@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Consulta de Produtos</title>
+  <link rel="manifest" href="/manifest.json">
+
+  <style>
+    body { font-family: system-ui, -apple-system, BlinkMacSystemFont; background:#0b0b0b; color:#fff; margin:0; }
+    header { padding:20px; font-size:26px; font-weight:900; text-align:center; }
+
+    .wrap { padding:16px; display:grid; gap:14px; max-width:720px; margin:0 auto; }
+
+    button, input { font-size:22px; padding:16px; border-radius:16px; border:0; width:100%; }
+    button { font-weight:900; background:#2f7cff; color:#fff; }
+    button.update { background:#22c55e; color:#000; }
+    button.gray { background:#3a3a3a; color:#fff; }
+
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+
+    input { background:#fff; color:#000; }
+
+    .hint { font-size:20px; opacity:.9; line-height:1.3; text-align:center; }
+
+    .card { background:#151515; border-radius:18px; padding:18px; }
+    .product-name { font-size:26px; font-weight:900; margin-bottom:8px; }
+    .price { font-size:24px; font-weight:900; margin-bottom:10px; }
+    .price span { background:#ffe45c; color:#111; padding:6px 12px; border-radius:12px; }
+
+    .warn {
+      margin-top:10px;
+      padding:12px;
+      border-radius:12px;
+      background:#2a1b1b;
+      border:1px solid #5a2a2a;
+      font-size:18px;
+      line-height:1.3;
+    }
+
+    img { width:100%; max-height:320px; object-fit:contain; border-radius:14px; margin-top:12px; background:#0b0b0b; }
+
+    hr { border:0; border-top:1px solid #2a2a2a; margin:14px 0; }
+
+    .okBanner {
+      display:none;
+      text-align:center;
+      font-size:20px;
+      font-weight:900;
+      padding:12px;
+      border-radius:14px;
+      background:#22c55e;
+      color:#071a0a;
+    }
+    .okBanner.show { display:block; }
+
+    #scanVideo {
+      width:100%;
+      border-radius:18px;
+      margin-top:10px;
+      background:#000;
+    }
+
+    /* ✅ Overlay central para mensagens do scanner */
+    .scanOverlay {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.85);
+      border-radius: 18px;
+      padding: 20px 22px;
+      text-align: center;
+      font-size: 22px;
+      line-height: 1.35;
+      z-index: 9999;
+      max-width: 90%;
+      box-shadow: 0 0 0 2px rgba(255,255,255,0.05);
+      pointer-events: none;
+    }
+    .scanOverlay b { font-weight: 900; }
+    .scanOverlay.hide { display:none; }
+  
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .mic { background:#a855f7; }
+    .help { background:#111827; color:#e5e7eb; border:2px solid #334155; }
+    .whats { background:#22c55e; color:#071a0a; }
+    .status {
+      padding:14px;
+      border-radius:16px;
+      font-size:20px;
+      font-weight:800;
+      text-align:center;
+    }
+    .status.hide { display:none; }
+    .status.ok { background:#16a34a; color:#041b0b; }
+    .status.err { background:#ef4444; color:#2a0505; }
+    .hint.big { font-size:20px; line-height:1.35; }
+    .scanBar {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      margin-top:10px;
+    }
+    .scanBar button { padding:14px; font-size:20px; border-radius:16px; }
+    .scanBar .torch { background:#f59e0b; color:#2a1601; }
+    .scanBar .close { background:#334155; color:#fff; }
+    .foundOverlay {
+      position: fixed;
+      inset: 0;
+      display:none;
+      place-items: center;
+      z-index: 9999;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(4px);
+    }
+    .foundOverlay.show { display:grid; }
+    .foundOverlay .box{
+      background:#22c55e;
+      color:#071a0a;
+      font-size:32px;
+      font-weight:900;
+      padding:18px 22px;
+      border-radius:18px;
+      text-align:center;
+      max-width: 92vw;
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.65);
+      z-index: 9998;
+      display:none;
+      place-items:center;
+      padding:16px;
+    }
+    .modal.show { display:grid; }
+    .modal .panel{
+      background:#0f172a;
+      border:1px solid #334155;
+      border-radius:18px;
+      padding:16px;
+      width:min(720px, 96vw);
+      color:#fff;
+      box-shadow: 0 10px 30px rgba(0,0,0,.45);
+    }
+    .modal h2{ margin:0 0 10px 0; font-size:22px; }
+    .modal p{ margin:10px 0; font-size:20px; line-height:1.4; }
+    .modal .modalRow{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px; }
+    .modal .modalRow button{ font-size:20px; padding:14px; border-radius:16px; }
+    .modal .primary{ background:#2f7cff; }
+    .modal .secondary{ background:#334155; }
+
+  </style>
+</head>
+
+<body>
+<header>Consulta de Produtos</header>
+
+<div class="wrap">
+
+  <div class="row">
+    <button onclick="scan()">📷 Escanear</button>
+    <button class="mic" onclick="ditar()">🎙️ Pesquisar por voz</button>
+  </div>
+
+  <div class="hint big">
+    Aponte para o código. Mantenha parado. Aproxime até ficar nítido.
+  </div>
+
+  <input id="q" placeholder="Digite o GTIN ou o nome do produto" inputmode="search" autocomplete="off">
+
+  <div class="row">
+    <button onclick="buscar()">🔍 Buscar</button>
+    <button class="gray" onclick="limpar()">🧹 Limpar</button>
+  </div>
+
+  <div id="status" class="status hide"></div>
+
+  <div class="row">
+    <button class="update" onclick="atualizar()">🔄 Atualizar</button>
+    <button class="help" onclick="abrirAjuda()">❓ Ajuda</button>
+  </div>
+
+  <button class="whats" onclick="chamarAjuda()">💬 Chamar ajuda no WhatsApp</button>
+
+  <div id="ok" class="okBanner">✅ ENCONTRADO!</div>
+
+  <div class="card" id="res">Aguardando…</div>
+
+
+
+
+</div>
+
+
+  <!-- ✅ Feedback grande quando acha código -->
+  <div id="foundOverlay" class="foundOverlay">
+    <div class="box">✅ ENCONTRADO!</div>
+  </div>
+
+  <!-- ✅ Ajuda simples (3 passos) -->
+  <div id="helpModal" class="modal">
+    <div class="panel">
+      <h2>Ajuda rápida</h2>
+      <p><b>1)</b> Para escanear: toque em <b>Escanear</b>, aponte para o código e mantenha o celular parado até aparecer “ENCONTRADO”.</p>
+      <p><b>2)</b> Para digitar: escreva o nome do produto (ou só parte do GTIN) e toque em <b>Buscar</b>. Você pode digitar “do seu jeito”.</p>
+      <p><b>3)</b> Se não achar: toque em <b>Chamar ajuda</b> para enviar uma mensagem pronta no WhatsApp.</p>
+      <div class="modalRow">
+        <button class="secondary" onclick="fecharAjuda()">Fechar</button>
+        <button class="primary" onclick="chamarAjuda()">Chamar ajuda</button>
+      </div>
+    </div>
+  </div>
+
+<!-- ✅ Overlay central (fica no campo de visão) -->
+<div id="scanOverlay" class="scanOverlay hide">📷 Preparando câmera…</div>
+
+<script src="https://unpkg.com/@zxing/library@latest"></script>
+<script>
+let reader = null;
+let lastQuery = "";
+let scanning = false;
+let videoEl = null;
+
+let lastScanValue = null;
+let sameScanCount = 0;
+
+
+let torchOn = false;
+
+function setStatus(kind, msg){
+  const el = document.getElementById("status");
+  if(!msg){
+    el.className = "status hide";
+    el.textContent = "";
+    return;
+  }
+  el.className = `status ${kind}`;
+  el.textContent = msg;
+}
+
+function showFound(){
+  const overlay = document.getElementById("foundOverlay");
+  overlay.classList.add("show");
+  setTimeout(()=>overlay.classList.remove("show"), 650);
+  const ok = document.getElementById("ok");
+  ok.classList.add("show");
+  setTimeout(()=>ok.classList.remove("show"), 900);
+}
+
+function abrirAjuda(){ document.getElementById("helpModal").classList.add("show"); }
+function fecharAjuda(){ document.getElementById("helpModal").classList.remove("show"); }
+
+function chamarAjuda(){
+  // abre WhatsApp para escolher contato (sem precisar número fixo)
+  const msg = encodeURIComponent("Não estou conseguindo achar o produto no app. Você pode me ajudar? (Tentei escanear e buscar pelo nome/GTIN)");
+  window.location.href = `https://api.whatsapp.com/send?text=${msg}`;
+}
+
+async function ditar(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    setStatus("err","Ditado não disponível neste celular. Digite normalmente.");
+    return;
+  }
+  setStatus("ok","Ouvindo… fale o nome do produto.");
+  const rec = new SR();
+  rec.lang = "pt-BR";
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  rec.onresult = (e)=>{
+    const txt = (e.results?.[0]?.[0]?.transcript || "").trim();
+    if(txt){
+      document.getElementById("q").value = txt;
+      buscar(txt);
+    } else {
+      setStatus("err","Não entendi. Tente de novo.");
+    }
+  };
+  rec.onerror = ()=> setStatus("err","Não foi possível usar o ditado. Tente de novo.");
+  rec.onend = ()=> setTimeout(()=>setStatus(null,null), 1200);
+
+  try{ rec.start(); }catch(_){ setStatus("err","Ditado indisponível. Tente de novo."); }
+}
+function beep(){
+  try{
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    o.frequency.value = 880;
+    o.connect(ctx.destination);
+    o.start();
+    setTimeout(() => o.stop(), 80);
+  }catch(e){}
+}
+
+function vibrate(pattern=[60]){
+  try{
+    if(navigator.vibrate) navigator.vibrate(pattern);
+  }catch(e){}
+}
+
+function flashGreen(){
+  const ok = document.getElementById("ok");
+  ok.classList.add("show");
+  setTimeout(() => ok.classList.remove("show"), 800);
+}
+
+function showOverlay(msg){
+  const o = document.getElementById("scanOverlay");
+  o.innerHTML = msg;
+  o.classList.remove("hide");
+}
+
+function hideOverlay(){
+  document.getElementById("scanOverlay").classList.add("hide");
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, m =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m])
+  );
+}
+
+function isZeroOrEmpty(v){
+  if (v === null || v === undefined) return true;
+  if (typeof v === "number") return v === 0;
+  const t = String(v).trim();
+  if (!t) return true;
+  const digits = t.replace(/[^\d.,-]/g, "");
+  return ["0","0,0","0,00","0.0","0.00"].includes(digits);
+}
+
+function formatPrice(v){
+  if(v === null || v === undefined || v === "") return "—";
+  if(typeof v === "number"){
+    return v.toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
+  }
+  return String(v).includes("R$") ? v : ("R$ " + v);
+}
+
+function stopScan(){
+  try { reader?.reset?.(); } catch(e) {}
+  if (videoEl) {
+    try { videoEl.srcObject && videoEl.srcObject.getTracks().forEach(t => t.stop()); } catch(e) {}
+    try { videoEl.remove(); } catch(e) {}
+  }
+  videoEl = null;
+  scanning = false;
+  hideOverlay();
+}
+
+
+function getVideoTrack(){
+  const stream = videoEl && videoEl.srcObject;
+  const track = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+  return track || null;
+}
+
+function updateTorchButtonAvailability(){
+  const btn = document.querySelector("#scanBar .torch");
+  if(!btn) return;
+  const track = getVideoTrack();
+  const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+  if(!track || !caps || !caps.torch){
+    btn.disabled = true;
+    btn.textContent = "🔦 Lanterna (indisponível)";
+  } else {
+    btn.disabled = false;
+    btn.textContent = torchOn ? "🔦 Lanterna: ligada" : "🔦 Lanterna";
+  }
+}
+
+async function toggleTorch(){
+  const track = getVideoTrack();
+  const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+  if(!track || !caps || !caps.torch){
+    showOverlay("Lanterna não disponível neste celular.");
+    updateTorchButtonAvailability();
+    return;
+  }
+  torchOn = !torchOn;
+  try{
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+  }catch(_){
+    torchOn = false;
+    showOverlay("Não consegui ligar a lanterna.");
+  }
+  updateTorchButtonAvailability();
+}
+
+function renderItems(items){
+  const res = document.getElementById("res");
+  if(!items || !items.length){
+    res.textContent = "Produto não encontrado";
+    return;
+  }
+
+  res.innerHTML = `<div class="hint">Encontrados: <b>${items.length}</b></div>` + items.map(p => `
+    <div>
+      <div class="product-name">${escapeHtml(p.name)}</div>
+
+      <div class="price">
+        Preço: <span>${escapeHtml(formatPrice(p.preco))}</span>
+      </div>
+
+      ${isZeroOrEmpty(p.preco) ? `<div class="warn"><b>Preço ainda não definido.</b> Tomar providências.</div>` : ""}
+
+      ${p.gtin ? `<div class="hint">GTIN: ${escapeHtml(p.gtin)}</div>` : ""}
+      ${p.img ? `<img src="${p.img}" alt="Imagem do produto">` : ""}
+    </div>
+  `).join('<hr>');
+}
+
+function limpar(){
+  stopScan();
+  document.getElementById("q").value = "";
+  lastQuery = "";
+  setStatus(null,null);
+  document.getElementById("res").textContent = "Aguardando…";
+}
+
+async function buscar(forced){
+  stopScan();
+  const q = (forced || document.getElementById("q").value).trim();
+  if(!q){
+    setStatus("err","Digite um GTIN ou nome.");
+    document.getElementById("res").textContent = "Digite um GTIN ou nome.";
+    return;
+  }
+
+  lastQuery = q;
+
+  if(!navigator.onLine){
+    setStatus("err","Sem internet. Volte para o Wi‑Fi e toque em Atualizar.");
+    document.getElementById("res").innerHTML = `
+      <div class="warn"><b>Sem internet.</b> Volte para o Wi‑Fi e tente novamente.</div>
+      <div style="margin-top:12px;">
+        <button onclick="atualizar()">Tentar novamente</button>
+      </div>
+    `;
+    return;
+  }
+
+  setStatus("ok","Carregando…");
+  document.getElementById("res").textContent = "Carregando…";
+
+  try{
+    const r = await fetch(`/api/lookup?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+    const d = await r.json().catch(()=>({}));
+
+    if(!r.ok || !d.found){
+      setStatus("err","Não encontrei. Tente digitar de outro jeito.");
+      document.getElementById("res").innerHTML = `
+        <div class="warn"><b>Produto não encontrado.</b></div>
+        <div class="hint" style="margin-top:10px;">
+          Dica: digite só uma parte do nome (ex.: “refil creme”) ou só o final do GTIN.
+        </div>
+        <div style="margin-top:12px;">
+          <button onclick="atualizar()">Tentar novamente</button>
+        </div>
+      `;
+      return;
+    }
+
+    setStatus(null,null);
+    renderItems(d.items);
+  }catch(e){
+    setStatus("err","Sem internet. Volte para o Wi‑Fi e tente de novo.");
+    document.getElementById("res").innerHTML = `
+      <div class="warn"><b>Sem internet ou erro de conexão.</b></div>
+      <div style="margin-top:12px;">
+        <button onclick="atualizar()">Tentar novamente</button>
+      </div>
+    `;
+  }
+}
+
+function atualizar(){
+  stopScan();
+  if(!lastQuery){
+    document.getElementById("res").textContent = "Busque um produto primeiro.";
+    return;
+  }
+  buscar(lastQuery);
+}
+
+async function scan(){
+  if(scanning) return;
+
+  stopScan();
+  scanning = true;
+  torchOn = false;
+
+  setStatus(null,null);
+
+  // mensagem curtinha (sempre igual)
+  showOverlay("Aponte para o código. Mantenha parado. Aproxime até ficar nítido.");
+
+  const resBox = document.getElementById("res");
+  resBox.textContent = "Abrindo câmera…";
+
+  // remove vídeo anterior, se existir
+  if(videoEl && videoEl.parentNode) videoEl.parentNode.removeChild(videoEl);
+
+  // barra de botões da câmera
+  const oldBar = document.getElementById("scanBar");
+  if(oldBar) oldBar.remove();
+
+  videoEl = document.createElement("video");
+  videoEl.id = "scanVideo";
+  videoEl.setAttribute("playsinline","true");
+  document.querySelector(".wrap").insertBefore(videoEl, resBox);
+
+  const bar = document.createElement("div");
+  bar.id = "scanBar";
+  bar.className = "scanBar";
+  bar.innerHTML = `
+    <button class="torch" onclick="toggleTorch()">🔦 Lanterna</button>
+    <button class="close" onclick="stopScan()">✖ Fechar câmera</button>
+  `;
+  document.querySelector(".wrap").insertBefore(bar, resBox);
+
+  const hints = new Map();
+  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[
+    ZXing.BarcodeFormat.EAN_13,
+    ZXing.BarcodeFormat.EAN_8,
+    ZXing.BarcodeFormat.UPC_A
+  ]);
+
+  reader = new ZXing.BrowserMultiFormatReader(hints);
+
+  // dica automática se ficar muito tempo sem ler
+  const nudgeTimer = setInterval(()=>{
+    if(!scanning) return;
+    showOverlay("Se não ler, aproxime até ficar nítido e evite reflexo.");
+  }, 4500);
+
+  try{
+    await reader.decodeFromVideoDevice(null, videoEl, (result) => {
+      if(!result || !scanning) return;
+
+      const code = result.getText().replace(/\D/g, "");
+
+      // EAN/UPC típicos + GTIN-14
+      if (![8,12,13,14].includes(code.length)) {
+        return;
+      }
+
+      clearInterval(nudgeTimer);
+      stopScan();
+
+      // feedback forte e imediato
+      vibrate([70,40,70]);
+      beep();
+      showFound();
+
+      document.getElementById("q").value = code;
+      buscar(code);
+    });
+
+    // tenta habilitar lanterna se disponível (não liga automaticamente; só prepara)
+    setTimeout(()=>updateTorchButtonAvailability(), 600);
+
+  }catch(e){
+    clearInterval(nudgeTimer);
+    stopScan();
+    resBox.innerHTML = `
+      <div class="warn"><b>Erro ao acessar a câmera.</b></div>
+      <div style="margin-top:12px;">
+        <button onclick="scan()">Tentar de novo</button>
+      </div>
+    `;
+  }
+}</script>
+
+</body>
+</html>
