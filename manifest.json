@@ -1,0 +1,6 @@
+{
+  "name": "Consulta GTIN",
+  "short_name": "GTIN",
+  "start_url": "/",
+  "display": "standalone"
+}
