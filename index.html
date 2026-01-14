@@ -80,6 +80,77 @@
     }
     .scanOverlay b { font-weight: 900; }
     .scanOverlay.hide { display:none; }
+  
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .mic { background:#a855f7; }
+    .help { background:#111827; color:#e5e7eb; border:2px solid #334155; }
+    .whats { background:#22c55e; color:#071a0a; }
+    .status {
+      padding:14px;
+      border-radius:16px;
+      font-size:20px;
+      font-weight:800;
+      text-align:center;
+    }
+    .status.hide { display:none; }
+    .status.ok { background:#16a34a; color:#041b0b; }
+    .status.err { background:#ef4444; color:#2a0505; }
+    .hint.big { font-size:20px; line-height:1.35; }
+    .scanBar {
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:12px;
+      margin-top:10px;
+    }
+    .scanBar button { padding:14px; font-size:20px; border-radius:16px; }
+    .scanBar .torch { background:#f59e0b; color:#2a1601; }
+    .scanBar .close { background:#334155; color:#fff; }
+    .foundOverlay {
+      position: fixed;
+      inset: 0;
+      display:none;
+      place-items: center;
+      z-index: 9999;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(4px);
+    }
+    .foundOverlay.show { display:grid; }
+    .foundOverlay .box{
+      background:#22c55e;
+      color:#071a0a;
+      font-size:32px;
+      font-weight:900;
+      padding:18px 22px;
+      border-radius:18px;
+      text-align:center;
+      max-width: 92vw;
+    }
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.65);
+      z-index: 9998;
+      display:none;
+      place-items:center;
+      padding:16px;
+    }
+    .modal.show { display:grid; }
+    .modal .panel{
+      background:#0f172a;
+      border:1px solid #334155;
+      border-radius:18px;
+      padding:16px;
+      width:min(720px, 96vw);
+      color:#fff;
+      box-shadow: 0 10px 30px rgba(0,0,0,.45);
+    }
+    .modal h2{ margin:0 0 10px 0; font-size:22px; }
+    .modal p{ margin:10px 0; font-size:20px; line-height:1.4; }
+    .modal .modalRow{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:12px; }
+    .modal .modalRow button{ font-size:20px; padding:14px; border-radius:16px; }
+    .modal .primary{ background:#2f7cff; }
+    .modal .secondary{ background:#334155; }
+
   </style>
 </head>
 
@@ -88,26 +159,59 @@
 
 <div class="wrap">
 
-  <button onclick="scan()">📷 Escanear código de barras</button>
-
-  <div class="hint">
-    Para escanear: deixe o código <b>bem iluminado</b> e mova o celular <b>devagar</b> até ficar nítido.
+  <div class="row">
+    <button onclick="scan()">📷 Escanear</button>
+    <button class="mic" onclick="ditar()">🎙️ Pesquisar por voz</button>
   </div>
 
-  <input id="q" placeholder="Digite o GTIN ou o nome do produto">
+  <div class="hint big">
+    Aponte para o código. Mantenha parado. Aproxime até ficar nítido.
+  </div>
+
+  <input id="q" placeholder="Digite o GTIN ou o nome do produto" inputmode="search" autocomplete="off">
 
   <div class="row">
     <button onclick="buscar()">🔍 Buscar</button>
     <button class="gray" onclick="limpar()">🧹 Limpar</button>
   </div>
 
-  <button class="update" onclick="atualizar()">🔄 Atualizar</button>
+  <div id="status" class="status hide"></div>
 
-  <div id="ok" class="okBanner">✅ CÓDIGO LIDO!</div>
+  <div class="row">
+    <button class="update" onclick="atualizar()">🔄 Atualizar</button>
+    <button class="help" onclick="abrirAjuda()">❓ Ajuda</button>
+  </div>
+
+  <button class="whats" onclick="chamarAjuda()">💬 Chamar ajuda no WhatsApp</button>
+
+  <div id="ok" class="okBanner">✅ ENCONTRADO!</div>
 
   <div class="card" id="res">Aguardando…</div>
 
+
+
+
 </div>
+
+
+  <!-- ✅ Feedback grande quando acha código -->
+  <div id="foundOverlay" class="foundOverlay">
+    <div class="box">✅ ENCONTRADO!</div>
+  </div>
+
+  <!-- ✅ Ajuda simples (3 passos) -->
+  <div id="helpModal" class="modal">
+    <div class="panel">
+      <h2>Ajuda rápida</h2>
+      <p><b>1)</b> Para escanear: toque em <b>Escanear</b>, aponte para o código e mantenha o celular parado até aparecer “ENCONTRADO”.</p>
+      <p><b>2)</b> Para digitar: escreva o nome do produto (ou só parte do GTIN) e toque em <b>Buscar</b>. Você pode digitar “do seu jeito”.</p>
+      <p><b>3)</b> Se não achar: toque em <b>Chamar ajuda</b> para enviar uma mensagem pronta no WhatsApp.</p>
+      <div class="modalRow">
+        <button class="secondary" onclick="fecharAjuda()">Fechar</button>
+        <button class="primary" onclick="chamarAjuda()">Chamar ajuda</button>
+      </div>
+    </div>
+  </div>
 
 <!-- ✅ Overlay central (fica no campo de visão) -->
 <div id="scanOverlay" class="scanOverlay hide">📷 Preparando câmera…</div>
@@ -119,6 +223,67 @@ let lastQuery = "";
 let scanning = false;
 let videoEl = null;
 
+let lastScanValue = null;
+let sameScanCount = 0;
+
+
+let torchOn = false;
+
+function setStatus(kind, msg){
+  const el = document.getElementById("status");
+  if(!msg){
+    el.className = "status hide";
+    el.textContent = "";
+    return;
+  }
+  el.className = `status ${kind}`;
+  el.textContent = msg;
+}
+
+function showFound(){
+  const overlay = document.getElementById("foundOverlay");
+  overlay.classList.add("show");
+  setTimeout(()=>overlay.classList.remove("show"), 650);
+  const ok = document.getElementById("ok");
+  ok.classList.add("show");
+  setTimeout(()=>ok.classList.remove("show"), 900);
+}
+
+function abrirAjuda(){ document.getElementById("helpModal").classList.add("show"); }
+function fecharAjuda(){ document.getElementById("helpModal").classList.remove("show"); }
+
+function chamarAjuda(){
+  // abre WhatsApp para escolher contato (sem precisar número fixo)
+  const msg = encodeURIComponent("Não estou conseguindo achar o produto no app. Você pode me ajudar? (Tentei escanear e buscar pelo nome/GTIN)");
+  window.location.href = `https://api.whatsapp.com/send?text=${msg}`;
+}
+
+async function ditar(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){
+    setStatus("err","Ditado não disponível neste celular. Digite normalmente.");
+    return;
+  }
+  setStatus("ok","Ouvindo… fale o nome do produto.");
+  const rec = new SR();
+  rec.lang = "pt-BR";
+  rec.interimResults = false;
+  rec.maxAlternatives = 1;
+
+  rec.onresult = (e)=>{
+    const txt = (e.results?.[0]?.[0]?.transcript || "").trim();
+    if(txt){
+      document.getElementById("q").value = txt;
+      buscar(txt);
+    } else {
+      setStatus("err","Não entendi. Tente de novo.");
+    }
+  };
+  rec.onerror = ()=> setStatus("err","Não foi possível usar o ditado. Tente de novo.");
+  rec.onend = ()=> setTimeout(()=>setStatus(null,null), 1200);
+
+  try{ rec.start(); }catch(_){ setStatus("err","Ditado indisponível. Tente de novo."); }
+}
 function beep(){
   try{
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -186,6 +351,45 @@ function stopScan(){
   hideOverlay();
 }
 
+
+function getVideoTrack(){
+  const stream = videoEl && videoEl.srcObject;
+  const track = stream && stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+  return track || null;
+}
+
+function updateTorchButtonAvailability(){
+  const btn = document.querySelector("#scanBar .torch");
+  if(!btn) return;
+  const track = getVideoTrack();
+  const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+  if(!track || !caps || !caps.torch){
+    btn.disabled = true;
+    btn.textContent = "🔦 Lanterna (indisponível)";
+  } else {
+    btn.disabled = false;
+    btn.textContent = torchOn ? "🔦 Lanterna: ligada" : "🔦 Lanterna";
+  }
+}
+
+async function toggleTorch(){
+  const track = getVideoTrack();
+  const caps = track && track.getCapabilities ? track.getCapabilities() : null;
+  if(!track || !caps || !caps.torch){
+    showOverlay("Lanterna não disponível neste celular.");
+    updateTorchButtonAvailability();
+    return;
+  }
+  torchOn = !torchOn;
+  try{
+    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+  }catch(_){
+    torchOn = false;
+    showOverlay("Não consegui ligar a lanterna.");
+  }
+  updateTorchButtonAvailability();
+}
+
 function renderItems(items){
   const res = document.getElementById("res");
   if(!items || !items.length){
@@ -193,8 +397,7 @@ function renderItems(items){
     return;
   }
 
-  const header = `<div class="hint"><b>Encontrados:</b> ${items.length}</div>`;
-  res.innerHTML = header + items.map(p => `
+  res.innerHTML = `<div class="hint">Encontrados: <b>${items.length}</b></div>` + items.map(p => `
     <div>
       <div class="product-name">${escapeHtml(p.name)}</div>
 
@@ -214,6 +417,7 @@ function limpar(){
   stopScan();
   document.getElementById("q").value = "";
   lastQuery = "";
+  setStatus(null,null);
   document.getElementById("res").textContent = "Aguardando…";
 }
 
@@ -221,22 +425,56 @@ async function buscar(forced){
   stopScan();
   const q = (forced || document.getElementById("q").value).trim();
   if(!q){
+    setStatus("err","Digite um GTIN ou nome.");
     document.getElementById("res").textContent = "Digite um GTIN ou nome.";
     return;
   }
 
   lastQuery = q;
-  document.getElementById("res").textContent = "Buscando no Notion…";
 
-  const r = await fetch(`/api/lookup?q=${encodeURIComponent(q)}`);
-  const d = await r.json().catch(()=>({}));
-
-  if(!r.ok || !d.found){
-    document.getElementById("res").textContent = "Produto não encontrado";
+  if(!navigator.onLine){
+    setStatus("err","Sem internet. Volte para o Wi‑Fi e toque em Atualizar.");
+    document.getElementById("res").innerHTML = `
+      <div class="warn"><b>Sem internet.</b> Volte para o Wi‑Fi e tente novamente.</div>
+      <div style="margin-top:12px;">
+        <button onclick="atualizar()">Tentar novamente</button>
+      </div>
+    `;
     return;
   }
 
-  renderItems(d.items);
+  setStatus("ok","Carregando…");
+  document.getElementById("res").textContent = "Carregando…";
+
+  try{
+    const r = await fetch(`/api/lookup?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+    const d = await r.json().catch(()=>({}));
+
+    if(!r.ok || !d.found){
+      setStatus("err","Não encontrei. Tente digitar de outro jeito.");
+      document.getElementById("res").innerHTML = `
+        <div class="warn"><b>Produto não encontrado.</b></div>
+        <div class="hint" style="margin-top:10px;">
+          Dica: digite só uma parte do nome (ex.: “refil creme”) ou só o final do GTIN.
+        </div>
+        <div style="margin-top:12px;">
+          <button onclick="atualizar()">Tentar novamente</button>
+        </div>
+      `;
+      return;
+    }
+
+    setStatus(null,null);
+    renderItems(d.items);
+  }catch(e){
+    setStatus("err","Sem internet. Volte para o Wi‑Fi e tente de novo.");
+    document.getElementById("res").innerHTML = `
+      <div class="warn"><b>Sem internet ou erro de conexão.</b></div>
+      <div style="margin-top:12px;">
+        <button onclick="atualizar()">Tentar novamente</button>
+      </div>
+    `;
+  }
 }
 
 function atualizar(){
@@ -253,25 +491,36 @@ async function scan(){
 
   stopScan();
   scanning = true;
+  torchOn = false;
 
-  // mensagens no overlay (centro da tela)
-  showOverlay(`
-    <b>Modo câmera</b><br>
-    Aponte para o código e <b>mova devagar</b> até ler.<br>
-    Se houver brilho, <b>incline</b> a embalagem.
-  `);
+  setStatus(null,null);
+
+  // mensagem curtinha (sempre igual)
+  showOverlay("Aponte para o código. Mantenha parado. Aproxime até ficar nítido.");
 
   const resBox = document.getElementById("res");
-  resBox.innerHTML = `
-    <div class="hint">
-      A câmera abriu. Olhe as instruções no centro da tela.
-    </div>
-  `;
+  resBox.textContent = "Abrindo câmera…";
+
+  // remove vídeo anterior, se existir
+  if(videoEl && videoEl.parentNode) videoEl.parentNode.removeChild(videoEl);
+
+  // barra de botões da câmera
+  const oldBar = document.getElementById("scanBar");
+  if(oldBar) oldBar.remove();
 
   videoEl = document.createElement("video");
   videoEl.id = "scanVideo";
   videoEl.setAttribute("playsinline","true");
   document.querySelector(".wrap").insertBefore(videoEl, resBox);
+
+  const bar = document.createElement("div");
+  bar.id = "scanBar";
+  bar.className = "scanBar";
+  bar.innerHTML = `
+    <button class="torch" onclick="toggleTorch()">🔦 Lanterna</button>
+    <button class="close" onclick="stopScan()">✖ Fechar câmera</button>
+  `;
+  document.querySelector(".wrap").insertBefore(bar, resBox);
 
   const hints = new Map();
   hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS,[
@@ -282,44 +531,49 @@ async function scan(){
 
   reader = new ZXing.BrowserMultiFormatReader(hints);
 
-  // dica simples (sem poluir a tela)
-  const startedAt = Date.now();
-  const nudgeTimer = setInterval(() => {
-    if (!scanning) { clearInterval(nudgeTimer); return; }
-    const secs = Math.floor((Date.now() - startedAt)/1000);
-    if (secs === 3) showOverlay("🔎 Procure deixar o código <b>nítido</b> e centralizado.");
-    if (secs === 7) showOverlay("💡 Dica: <b>incline</b> a embalagem para tirar reflexo.");
-  }, 1000);
+  // dica automática se ficar muito tempo sem ler
+  const nudgeTimer = setInterval(()=>{
+    if(!scanning) return;
+    showOverlay("Se não ler, aproxime até ficar nítido e evite reflexo.");
+  }, 4500);
 
   try{
-    reader.decodeFromVideoDevice(null, videoEl, (result) => {
-      if(!result) return;
+    await reader.decodeFromVideoDevice(null, videoEl, (result) => {
+      if(!result || !scanning) return;
 
       const code = result.getText().replace(/\D/g, "");
 
-      // tamanhos típicos (EAN-8/UPC-A/EAN-13/GTIN-14)
+      // EAN/UPC típicos + GTIN-14
       if (![8,12,13,14].includes(code.length)) {
-        showOverlay("⚠️ Ajuste a distância/foco e tente de novo…");
         return;
       }
 
       clearInterval(nudgeTimer);
       stopScan();
 
-      // feedback
-      vibrate([60,40,60]);
+      // feedback forte e imediato
+      vibrate([70,40,70]);
       beep();
-      flashGreen();
+      showFound();
 
       document.getElementById("q").value = code;
       buscar(code);
-    });  }catch(e){
+    });
+
+    // tenta habilitar lanterna se disponível (não liga automaticamente; só prepara)
+    setTimeout(()=>updateTorchButtonAvailability(), 600);
+
+  }catch(e){
     clearInterval(nudgeTimer);
     stopScan();
-    resBox.textContent = "Erro ao acessar a câmera.";
+    resBox.innerHTML = `
+      <div class="warn"><b>Erro ao acessar a câmera.</b></div>
+      <div style="margin-top:12px;">
+        <button onclick="scan()">Tentar de novo</button>
+      </div>
+    `;
   }
-}
-</script>
+}</script>
 
 </body>
 </html>
